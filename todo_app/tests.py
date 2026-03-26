@@ -50,6 +50,9 @@ class TodoAppTests(TestCase):
         self.assertRedirects(response, reverse("dashboard"))
         task = Task.objects.get(title="Finish project")
         self.assertEqual(task.user, self.user)
+        self.assertEqual(task.description, "Complete the Django to-do app")
+        self.assertEqual(str(task.deadline), "2026-04-01")
+        self.assertEqual(task.position, 1)
 
     def test_user_can_update_complete_and_delete_own_task(self):
         task = Task.objects.create(user=self.user, title="Initial")
@@ -117,9 +120,49 @@ class TodoAppTests(TestCase):
             title="Board issue",
             status=Task.STATUS_TODO,
             priority=Task.PRIORITY_MEDIUM,
+            position=1,
         )
         self.client.login(username="mohan", password="strong-pass-123")
 
         self.client.post(reverse("move_task", args=[task.pk, "right"]))
         task.refresh_from_db()
         self.assertEqual(task.status, Task.STATUS_IN_PROGRESS)
+        self.assertEqual(task.position, 1)
+
+    def test_user_can_reorder_tasks_within_and_across_columns(self):
+        first = Task.objects.create(
+            user=self.user,
+            title="First",
+            status=Task.STATUS_TODO,
+            position=1,
+        )
+        second = Task.objects.create(
+            user=self.user,
+            title="Second",
+            status=Task.STATUS_TODO,
+            position=2,
+        )
+        review = Task.objects.create(
+            user=self.user,
+            title="Review",
+            status=Task.STATUS_REVIEW,
+            position=1,
+        )
+        self.client.login(username="mohan", password="strong-pass-123")
+
+        response = self.client.post(
+            reverse("reorder_task", args=[second.pk]),
+            {
+                "status": Task.STATUS_REVIEW,
+                "ordered_task_ids[]": [review.pk, second.pk],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        review.refresh_from_db()
+        self.assertEqual(first.position, 1)
+        self.assertEqual(second.status, Task.STATUS_REVIEW)
+        self.assertEqual(second.position, 2)
+        self.assertEqual(review.position, 1)

@@ -8,7 +8,7 @@
         <div>
             <p class="mini-label mb-2">Project Workspace</p>
             <h1 class="display-6 fw-bold mb-3">Manage work the way a Jira board feels.</h1>
-            <p class="text-muted mb-0">Track tasks across backlog, active work, review, and done. Use priority, deadlines, and quick movement controls to keep work flowing.</p>
+            <p class="text-muted mb-0">Track tasks across backlog, active work, review, and done. Drag cards between columns to update workflow and keep every change saved in the database.</p>
         </div>
         <div class="d-flex flex-column gap-2 align-items-xl-end">
             <a class="btn btn-dark btn-lg" href="{% url 'add_task' %}">Create Issue</a>
@@ -47,21 +47,21 @@
     </form>
 </section>
 
-<section class="board-grid">
+<section class="board-grid" data-board data-csrf-token="{{ csrf_token }}">
     {% for column in board_columns %}
-        <div class="board-column">
+        <div class="board-column" data-column-status="{{ column.key }}">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div>
                     <p class="mini-label mb-1">Stage</p>
                     <h2 class="h5 mb-0">{{ column.label }}</h2>
                 </div>
-                <span class="badge text-bg-dark rounded-pill">{{ column.count }}</span>
+                <span class="badge text-bg-dark rounded-pill" data-column-count>{{ column.count }}</span>
             </div>
 
-            {% if column.tasks %}
-                <div class="d-flex flex-column gap-3">
+            <div class="d-flex flex-column gap-3 task-list" data-task-list>
+                {% if column.tasks %}
                     {% for task in column.tasks %}
-                        <article class="task-card p-3">
+                        <article class="task-card p-3" draggable="true" data-task-card data-task-id="{{ task.pk }}" data-reorder-url="{% url 'reorder_task' task.pk %}">
                             <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
                                 <div>
                                     <div class="mini-label mb-1">Issue</div>
@@ -86,18 +86,6 @@
                             </div>
 
                             <div class="d-flex flex-wrap gap-2 mb-3">
-                                {% if task.status != 'backlog' %}
-                                    <form method="post" action="{% url 'move_task' task.pk 'left' %}">
-                                        {% csrf_token %}
-                                        <button class="btn btn-sm btn-outline-secondary" type="submit">Move Left</button>
-                                    </form>
-                                {% endif %}
-                                {% if task.status != 'done' %}
-                                    <form method="post" action="{% url 'move_task' task.pk 'right' %}">
-                                        {% csrf_token %}
-                                        <button class="btn btn-sm btn-outline-dark" type="submit">Move Right</button>
-                                    </form>
-                                {% endif %}
                                 <form method="post" action="{% url 'mark_complete' task.pk %}">
                                     {% csrf_token %}
                                     <button class="btn btn-sm btn-warning" type="submit">
@@ -112,12 +100,12 @@
                             </div>
                         </article>
                     {% endfor %}
-                </div>
-            {% else %}
-                <div class="task-card p-3 text-center text-muted small">
-                    No issues in {{ column.label|lower }}.
-                </div>
-            {% endif %}
+                {% else %}
+                    <div class="task-card p-3 text-center text-muted small empty-column-card" data-empty-state>
+                        No issues in {{ column.label|lower }}.
+                    </div>
+                {% endif %}
+            </div>
         </div>
     {% endfor %}
 </section>
@@ -137,4 +125,135 @@
         </div>
     </div>
 {% endif %}
+<script>
+    (() => {
+        const board = document.querySelector("[data-board]");
+        if (!board) {
+            return;
+        }
+
+        const csrfToken = board.dataset.csrfToken;
+        let draggedCard = null;
+        let previousList = null;
+
+        const updateColumnCount = (taskList) => {
+            const column = taskList.closest("[data-column-status]");
+            const badge = column.querySelector("[data-column-count]");
+            const taskCount = taskList.querySelectorAll("[data-task-card]").length;
+            badge.textContent = taskCount;
+        };
+
+        const refreshColumnState = (taskList) => {
+            const emptyCard = taskList.querySelector("[data-empty-state]");
+            const taskCards = taskList.querySelectorAll("[data-task-card]");
+
+            if (taskCards.length === 0 && !emptyCard) {
+                const placeholder = document.createElement("div");
+                placeholder.className = "task-card p-3 text-center text-muted small empty-column-card";
+                placeholder.dataset.emptyState = "true";
+                placeholder.textContent = "Drop a task here.";
+                taskList.appendChild(placeholder);
+            }
+
+            if (taskCards.length > 0 && emptyCard) {
+                emptyCard.remove();
+            }
+
+            updateColumnCount(taskList);
+        };
+
+        const getDragAfterElement = (taskList, clientY) => {
+            const cards = [...taskList.querySelectorAll("[data-task-card]:not(.dragging)")];
+            let closest = null;
+            let closestOffset = Number.NEGATIVE_INFINITY;
+
+            cards.forEach((card) => {
+                const box = card.getBoundingClientRect();
+                const offset = clientY - box.top - (box.height / 2);
+
+                if (offset < 0 && offset > closestOffset) {
+                    closestOffset = offset;
+                    closest = card;
+                }
+            });
+
+            return closest;
+        };
+
+        const persistOrder = async (taskCard, taskList) => {
+            const orderedTaskIds = [...taskList.querySelectorAll("[data-task-card]")]
+                .map((card) => card.dataset.taskId);
+            const body = new URLSearchParams();
+
+            body.append("status", taskList.closest("[data-column-status]").dataset.columnStatus);
+            orderedTaskIds.forEach((taskId) => body.append("ordered_task_ids[]", taskId));
+
+            const response = await fetch(taskCard.dataset.reorderUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                    "X-CSRFToken": csrfToken,
+                },
+                body: body.toString(),
+            });
+
+            if (!response.ok) {
+                throw new Error("Unable to save task order.");
+            }
+        };
+
+        board.querySelectorAll("[data-task-card]").forEach((card) => {
+            card.addEventListener("dragstart", () => {
+                draggedCard = card;
+                previousList = card.closest("[data-task-list]");
+                card.classList.add("dragging");
+            });
+
+            card.addEventListener("dragend", async () => {
+                card.classList.remove("dragging");
+                const currentList = card.closest("[data-task-list]");
+                refreshColumnState(currentList);
+
+                if (previousList && previousList !== currentList) {
+                    refreshColumnState(previousList);
+                }
+
+                try {
+                    await persistOrder(card, currentList);
+                } catch (error) {
+                    window.location.reload();
+                } finally {
+                    draggedCard = null;
+                    previousList = null;
+                }
+            });
+        });
+
+        board.querySelectorAll("[data-task-list]").forEach((taskList) => {
+            taskList.addEventListener("dragover", (event) => {
+                event.preventDefault();
+                if (!draggedCard) {
+                    return;
+                }
+
+                const emptyCard = taskList.querySelector("[data-empty-state]");
+                if (emptyCard) {
+                    emptyCard.remove();
+                }
+
+                const afterElement = getDragAfterElement(taskList, event.clientY);
+                if (afterElement) {
+                    taskList.insertBefore(draggedCard, afterElement);
+                } else {
+                    taskList.appendChild(draggedCard);
+                }
+
+                refreshColumnState(taskList);
+                if (previousList && previousList !== taskList) {
+                    refreshColumnState(previousList);
+                }
+            });
+        });
+    })();
+</script>
 {% endblock %}

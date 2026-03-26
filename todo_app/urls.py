@@ -10,4 +10,5 @@ urlpatterns = [
     path("tasks/<int:pk>/delete/", views.delete_task, name="delete_task"),
     path("tasks/<int:pk>/complete/", views.mark_complete, name="mark_complete"),
     path("tasks/<int:pk>/move/<str:direction>/", views.move_task, name="move_task"),
+    path("tasks/<int:pk>/reorder/", views.reorder_task, name="reorder_task"),
 ]

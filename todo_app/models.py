@@ -45,11 +45,12 @@ class Task(models.Model):
         choices=PRIORITY_CHOICES,
         default=PRIORITY_MEDIUM,
     )
+    position = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["deadline", "-created_at"]
+        ordering = ["position", "deadline", "-created_at"]
 
     def __str__(self):
         return self.title
