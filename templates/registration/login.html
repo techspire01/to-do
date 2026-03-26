@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Login | To-Do Manager{% endblock %}
+
+{% block content %}
+<div class="hero-card auth-card mx-auto p-4 p-md-5">
+    <h1 class="h3 fw-bold mb-2">Welcome back</h1>
+    <p class="text-muted mb-4">Sign in to manage your tasks, deadlines, and progress.</p>
+
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% for field in form %}
+            <div class="mb-3">
+                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                <input
+                    type="{% if field.name == 'password' %}password{% else %}text{% endif %}"
+                    name="{{ field.html_name }}"
+                    id="{{ field.id_for_label }}"
+                    class="form-control{% if field.errors %} is-invalid{% endif %}"
+                    value="{% if field.name != 'password' %}{{ field.value|default:'' }}{% endif %}"
+                >
+                {% for error in field.errors %}
+                    <div class="invalid-feedback">{{ error }}</div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+        {% endif %}
+        <button type="submit" class="btn btn-dark w-100">Login</button>
+    </form>
+
+    <p class="text-center mt-4 mb-0">
+        Need an account?
+        <a href="{% url 'register' %}">Create one</a>
+    </p>
+</div>
+{% endblock %}

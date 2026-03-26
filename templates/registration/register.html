@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Register | To-Do Manager{% endblock %}
+
+{% block content %}
+<div class="hero-card auth-card mx-auto p-4 p-md-5">
+    <h1 class="h3 fw-bold mb-2">Create your account</h1>
+    <p class="text-muted mb-4">Start organizing tasks, deadlines, and completed work in one place.</p>
+
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% for field in form %}
+            <div class="mb-3">
+                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% for error in field.errors %}
+                    <div class="text-danger small mt-1">{{ error }}</div>
+                {% endfor %}
+                {% if field.help_text %}
+                    <div class="form-text">{{ field.help_text|safe }}</div>
+                {% endif %}
+            </div>
+        {% endfor %}
+        <button type="submit" class="btn btn-dark w-100">Register</button>
+    </form>
+
+    <p class="text-center mt-4 mb-0">
+        Already registered?
+        <a href="{% url 'login' %}">Login here</a>
+    </p>
+</div>
+{% endblock %}

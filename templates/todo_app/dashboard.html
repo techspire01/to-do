@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Board | To-Do Manager{% endblock %}
+
+{% block content %}
+<section class="hero-card p-4 p-md-5 mb-4">
+    <div class="d-flex flex-column flex-xl-row justify-content-between gap-4">
+        <div>
+            <p class="mini-label mb-2">Project Workspace</p>
+            <h1 class="display-6 fw-bold mb-3">Manage work the way a Jira board feels.</h1>
+            <p class="text-muted mb-0">Track tasks across backlog, active work, review, and done. Use priority, deadlines, and quick movement controls to keep work flowing.</p>
+        </div>
+        <div class="d-flex flex-column gap-2 align-items-xl-end">
+            <a class="btn btn-dark btn-lg" href="{% url 'add_task' %}">Create Issue</a>
+            <span class="text-muted small">{{ page_obj.paginator.count }} issues in this view</span>
+        </div>
+    </div>
+</section>
+
+<section class="hero-card p-4 mb-4">
+    <form method="get" class="row g-3 align-items-end">
+        <div class="col-lg-4">
+            <label class="form-label" for="q">Search issues</label>
+            <input class="form-control" type="text" id="q" name="q" value="{{ search_query }}" placeholder="Search by summary or description">
+        </div>
+        <div class="col-lg-3">
+            <label class="form-label" for="status">Workflow stage</label>
+            <select class="form-select" id="status" name="status">
+                <option value="">All stages</option>
+                {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-lg-3">
+            <label class="form-label" for="priority">Priority</label>
+            <select class="form-select" id="priority" name="priority">
+                <option value="">All priorities</option>
+                {% for value, label in priority_choices %}
+                    <option value="{{ value }}" {% if selected_priority == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-lg-2 d-grid">
+            <button class="btn btn-outline-dark" type="submit">Filter Board</button>
+        </div>
+    </form>
+</section>
+
+<section class="board-grid">
+    {% for column in board_columns %}
+        <div class="board-column">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <p class="mini-label mb-1">Stage</p>
+                    <h2 class="h5 mb-0">{{ column.label }}</h2>
+                </div>
+                <span class="badge text-bg-dark rounded-pill">{{ column.count }}</span>
+            </div>
+
+            {% if column.tasks %}
+                <div class="d-flex flex-column gap-3">
+                    {% for task in column.tasks %}
+                        <article class="task-card p-3">
+                            <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+                                <div>
+                                    <div class="mini-label mb-1">Issue</div>
+                                    <h3 class="h6 fw-bold mb-1">{{ task.title }}</h3>
+                                </div>
+                                <span class="badge rounded-pill {{ task.priority_badge }}">{{ task.get_priority_display }}</span>
+                            </div>
+
+                            {% if task.description %}
+                                <p class="text-muted small mb-3">{{ task.description|truncatechars:120 }}</p>
+                            {% endif %}
+
+                            <div class="small mb-3">
+                                {% if task.deadline %}
+                                    <div class="fw-semibold">Due: {{ task.deadline }}</div>
+                                    <div class="{% if task.deadline <= today and task.status != 'done' %}deadline-warning{% else %}text-muted{% endif %}">
+                                        {% if task.deadline <= today and task.status != 'done' %}Needs attention{% else %}Scheduled{% endif %}
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">No due date</span>
+                                {% endif %}
+                            </div>
+
+                            <div class="d-flex flex-wrap gap-2 mb-3">
+                                {% if task.status != 'backlog' %}
+                                    <form method="post" action="{% url 'move_task' task.pk 'left' %}">
+                                        {% csrf_token %}
+                                        <button class="btn btn-sm btn-outline-secondary" type="submit">Move Left</button>
+                                    </form>
+                                {% endif %}
+                                {% if task.status != 'done' %}
+                                    <form method="post" action="{% url 'move_task' task.pk 'right' %}">
+                                        {% csrf_token %}
+                                        <button class="btn btn-sm btn-outline-dark" type="submit">Move Right</button>
+                                    </form>
+                                {% endif %}
+                                <form method="post" action="{% url 'mark_complete' task.pk %}">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-warning" type="submit">
+                                        {% if task.status == 'done' %}Reopen{% else %}Mark Done{% endif %}
+                                    </button>
+                                </form>
+                            </div>
+
+                            <div class="d-flex flex-wrap gap-2">
+                                <a class="btn btn-sm btn-outline-primary" href="{% url 'update_task' task.pk %}">Edit</a>
+                                <a class="btn btn-sm btn-outline-danger" href="{% url 'delete_task' task.pk %}">Delete</a>
+                            </div>
+                        </article>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="task-card p-3 text-center text-muted small">
+                    No issues in {{ column.label|lower }}.
+                </div>
+            {% endif %}
+        </div>
+    {% endfor %}
+</section>
+
+{% if page_obj.has_other_pages %}
+    <div class="hero-card p-3 mt-4">
+        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+            <span class="text-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+            <div class="d-flex gap-2">
+                {% if page_obj.has_previous %}
+                    <a class="btn btn-outline-dark btn-sm" href="?page={{ page_obj.previous_page_number }}&status={{ selected_status }}&priority={{ selected_priority }}&q={{ search_query }}">Previous</a>
+                {% endif %}
+                {% if page_obj.has_next %}
+                    <a class="btn btn-dark btn-sm" href="?page={{ page_obj.next_page_number }}&status={{ selected_status }}&priority={{ selected_priority }}&q={{ search_query }}">Next</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
